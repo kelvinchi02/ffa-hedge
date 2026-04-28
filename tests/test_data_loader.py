@@ -29,19 +29,41 @@ def test_spot_data_is_sorted_by_date(loader: FFADataLoader, data_attr: str) -> N
     assert df["Date"].is_monotonic_increasing
 
 
-def test_resolve_prefers_full_file_when_present(loader: FFADataLoader) -> None:
+def test_resolve_prefers_full_file_when_present(
+    loader: FFADataLoader, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Technical rationale: production-grade full data should be preferred over sampled surrogates."""
+    full_dir = tmp_path / "data"
+    sample_dir = tmp_path / "data_sample"
+    full_dir.mkdir()
+    sample_dir.mkdir()
+
+    (full_dir / "cape_index_fixed.csv").write_text("Date,Price\n2024-01-01,1\n", encoding="utf-8")
+    (sample_dir / "cape_index_fixed_sample.csv").write_text(
+        "Date,Price\n2024-01-01,2\n", encoding="utf-8"
+    )
+
+    monkeypatch.setattr(loader, "full_path", str(full_dir))
+    monkeypatch.setattr(loader, "sample_path", str(sample_dir))
+
     resolved = loader._resolve_data_file("cape_index_fixed.csv")
     assert Path(resolved).name == "cape_index_fixed.csv"
     assert Path(resolved).parent.name == "data"
 
 
 def test_resolve_falls_back_to_sample_name(
-    loader: FFADataLoader, monkeypatch: pytest.MonkeyPatch
+    loader: FFADataLoader, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Technical rationale: robust fallback keeps model pipelines runnable when full data is unavailable."""
-    missing_full_path = str(Path(loader.full_path) / "__missing__")
+    sample_dir = tmp_path / "data_sample"
+    sample_dir.mkdir()
+    (sample_dir / "cape_index_fixed_sample.csv").write_text(
+        "Date,Price\n2024-01-01,2\n", encoding="utf-8"
+    )
+
+    missing_full_path = str(tmp_path / "__missing__")
     monkeypatch.setattr(loader, "full_path", missing_full_path)
+    monkeypatch.setattr(loader, "sample_path", str(sample_dir))
 
     resolved = loader._resolve_data_file("cape_index_fixed.csv")
     assert Path(resolved).name == "cape_index_fixed_sample.csv"
