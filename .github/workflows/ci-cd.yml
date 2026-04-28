@@ -42,7 +42,7 @@ jobs:
           fi
 
       - name: Run tests
-        run: pytest -q --cov=ffa_engine.streaming --cov-report=term-missing --cov-fail-under=100
+        run: pytest -q --cov=ffa_engine.streaming --cov=ffa_engine.database --cov-branch --cov-report=term-missing --cov-fail-under=100
 
   release:
     name: Release Artifact
