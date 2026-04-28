@@ -37,12 +37,12 @@ jobs:
 
           if [ -s requirements.txt ]; then
             python -m pip install -r requirements.txt
+          else
+            python -m pip install pandas pytest pytest-cov
           fi
 
-          python -m pip install pandas pytest
-
       - name: Run tests
-        run: pytest -q
+        run: pytest -q --cov=ffa_engine.streaming --cov-report=term-missing --cov-fail-under=100
 
   release:
     name: Release Artifact
