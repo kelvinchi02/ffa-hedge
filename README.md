@@ -1,16 +1,96 @@
 # ffa-hedge
-Real-time FFA basis streaming and robust hedging optimization using CVXPY
 
-## CI/CD
+High-fidelity risk management engine for dry bulk shipowners, built around freight basis streaming and liquidity-aware FFA hedging workflows.
 
-This repository now includes a GitHub Actions pipeline at `.github/workflows/ci-cd.yml`.
+## 1. Project Purpose
+
+This repository implements a practical hedging engine for dry bulk operations. The workflow is designed around route-specific spot exposure (for example, Capesize lanes) and liquid Freight Forward Agreement (FFA) composite proxies.
+
+The goal is to protect shipowners from freight-market volatility across the charter lifecycle, including ballast (pre-charter) days, loading, and voyage transit.
+
+## 2. Key Technical Features
+
+- Data Streaming and Sampling (ORIE 5270): Implements Reservoir Sampling (Algorithm R) to maintain a memory-efficient and statistically representative sample of streaming market packets.
+- Liquidity-Aware Contract Selection: The data pipeline is built around liquid forward contracts and is designed to support maturity filtering (for example M1/M2/Q1) while avoiding near-expiry illiquid legs.
+- Triggered Rebalancing Support: Sampling and streaming modules are structured for threshold-based hedge updates instead of forced daily turnover, helping reduce slippage impact.
+- Dual-Book Persistence: SQLite persistence logs market data and optimization outputs side by side, enabling financial MTM and physical PnL reconciliation workflows.
+- Min-Var Optimization Ready: Reservoir snapshots are exposed as DataFrames for optimization pipelines (including CVXPY-based hedge-ratio estimation $\beta$) and optimization results can be persisted through the database layer.
+
+## 3. Dataset Used
+
+The project uses a hybrid data approach:
+
+- Spot indices: historical route/index settlement time series for Capesize and Panamax segments.
+- FFA curves: historical contract data in long format, pivoted to contract columns for modeling.
+- Sample fallback: `data_sample/` provides anonymized CSVs so the full pipeline remains reproducible when proprietary full data in `data/` is unavailable.
+
+The loader always tries `data/` first and automatically falls back to sample files in `data_sample/`.
+
+## 4. Repository Structure
+
+```text
+ffa_engine/
+	data_loader.py   # data resolution, caching, preprocessing, FFA pivoting
+	streaming.py     # stream controller + ReservoirSampler (Algorithm R)
+	database.py      # SQLite logging for market and hedge outputs
+
+tests/
+	test_data_loader.py
+	test_streaming.py
+	test_database.py
+```
+
+## 5. Installation and Execution
+
+```bash
+# Clone
+git clone https://github.com/your-username/ffa-hedge.git
+cd ffa-hedge
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Optional editable install for package-style development
+pip install -e .
+```
+
+Run the streaming + reservoir demo:
+
+```bash
+python -m ffa_engine.streaming
+```
+
+This demo executes the finite preview in `run_demo_stream()` and prints processed packet count plus sampled summary statistics.
+
+## 6. Unit Tests
+
+The current test suite includes:
+
+- `tests/test_data_loader.py`: path resolution, preprocessing, cache behavior, and pivot validation.
+- `tests/test_streaming.py`: reservoir behavior, stream integrity, vessel aliases, and finite/infinite processing paths.
+- `tests/test_database.py`: schema initialization, canonical vessel handling, packet logging, and connection lifecycle behavior.
+
+Run tests:
+
+```bash
+pytest -q
+```
+
+Run with coverage:
+
+```bash
+pytest --cov=ffa_engine --cov-report=term-missing
+```
+
+## 7. CI/CD
+
+This repository includes a GitHub Actions pipeline at `.github/workflows/ci-cd.yml`.
 
 - CI runs on pull requests to `main` and pushes to `main`.
-- CI validates the project by running `pytest` on Python 3.10, 3.11, and 3.12.
-- CD runs when a tag starting with `v` is pushed (for example `v1.0.0`).
-- CD creates a zip release bundle and publishes it as a GitHub Release asset.
+- CI executes `pytest` on Python 3.10, 3.11, and 3.12.
+- CD runs on tags starting with `v` (for example `v1.0.0`) and publishes a zipped release asset.
 
-### Trigger a release
+Trigger a release:
 
 ```bash
 git tag v1.0.0
