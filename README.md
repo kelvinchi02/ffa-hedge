@@ -32,11 +32,17 @@ The loader always tries `data/` first and automatically falls back to sample fil
 ffa_engine/
 	data_loader.py   # data resolution, caching, preprocessing, FFA pivoting
 	streaming.py     # stream controller + ReservoirSampler (Algorithm R)
+	main.py          # voyage simulation entry point and orchestration
+	optimization.py  # CVXPY minimum-variance hedge ratio optimizer
+	strategies.py    # voyage + hedge strategy policy components
 	database.py      # SQLite logging for market and hedge outputs
 
 tests/
 	test_data_loader.py
 	test_streaming.py
+	test_main.py
+	test_optimization.py
+	test_strategies.py
 	test_database.py
 ```
 
@@ -62,12 +68,36 @@ python -m ffa_engine.streaming
 
 This demo executes the finite preview in `run_demo_stream()` and prints processed packet count plus sampled summary statistics.
 
+Run all route simulations and consolidation in one step:
+
+```bash
+bash run_all_sims.sh
+```
+
+What it does:
+
+- Creates a clean `results/` directory.
+- Runs voyage simulations for routes C8, C14, and P2A.
+- Produces per-route SQLite files (`results_C8.db`, `results_C14.db`, `results_P2A.db`) inside `results/`.
+- Consolidates outputs into:
+	- `results/summary.sqlite` (tables: `market_data_all_routes`, `hedging_results_all_routes`, `route_summary`)
+	- `results/summary.csv` (route-level summary)
+
+Optional environment overrides:
+
+```bash
+PYTHON_BIN=python3 DURATION_DAYS=45 K_SAMPLES=60 bash run_all_sims.sh
+```
+
 ## 6. Unit Tests
 
 The current test suite includes:
 
 - `tests/test_data_loader.py`: path resolution, preprocessing, cache behavior, and pivot validation.
 - `tests/test_streaming.py`: reservoir behavior, stream integrity, vessel aliases, and finite/infinite processing paths.
+- `tests/test_main.py`: route alias resolution, stream key selection, optimizer frame shaping, and rebalance flow.
+- `tests/test_optimization.py`: min-variance solver fallback/bounds behavior and PnL calculations.
+- `tests/test_strategies.py`: voyage lifecycle defaults, contract targeting, rebalance trigger logic, and beta calculation.
 - `tests/test_database.py`: schema initialization, canonical vessel handling, packet logging, and connection lifecycle behavior.
 
 Run tests:
@@ -79,7 +109,7 @@ pytest -q
 Run with coverage:
 
 ```bash
-pytest --cov=ffa_engine --cov-report=term-missing
+pytest -q --cov=ffa_engine.streaming --cov=ffa_engine.database --cov=ffa_engine.strategies --cov=ffa_engine.optimization --cov=ffa_engine.main --cov-branch --cov-report=term-missing --cov-fail-under=100
 ```
 
 ## 7. CI/CD
