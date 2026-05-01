@@ -211,3 +211,6 @@ data/**
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Database files
+*.db

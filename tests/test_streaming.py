@@ -22,6 +22,17 @@ def test_reservoir_sampler_respects_capacity() -> None:
     assert len(sampler.get_sample()) == 5
 
 
+def test_reservoir_sampler_keeps_exact_k_after_1000_updates() -> None:
+    k = 37
+    sampler = ReservoirSampler(k=k, seed=17)
+
+    for value in range(1000):
+        sampler.update({"x": value})
+
+    assert sampler.n == 1000
+    assert len(sampler.get_sample()) == k
+
+
 def test_reservoir_sampler_extend_and_clear() -> None:
     sampler = ReservoirSampler(k=3, seed=3)
     sampler.extend([{"x": 1}, {"x": 2}, {"x": 3}, {"x": 4}])
