@@ -164,6 +164,33 @@ def test_select_market_keys_supports_legacy_m1_field() -> None:
     assert ffa_key == "M1"
 
 
+def test_select_market_keys_prefers_route_specific_cape_spot_column() -> None:
+    spot_key, ffa_key = main_module._select_market_keys(
+        packet={"Date": "2024-01-01", "C5": 100.0, "C8": 130.0, "M1": 99.0},
+        vessel_type="cape",
+        route="C8",
+    )
+
+    assert spot_key == "C8"
+    assert ffa_key == "M1"
+
+
+def test_select_market_keys_prefers_route_specific_pmx_spot_column() -> None:
+    spot_key, ffa_key = main_module._select_market_keys(
+        packet={
+            "Date": "2024-01-01",
+            "p4tc": 200.0,
+            "P2A": 210.0,
+            "M_Feb_2026": 215.0,
+        },
+        vessel_type="pmx",
+        route="P2A",
+    )
+
+    assert spot_key == "P2A"
+    assert ffa_key == "M_Feb_2026"
+
+
 def test_select_market_keys_prefers_earliest_non_expired_monthly_contract() -> None:
     spot_key, ffa_key = main_module._select_market_keys(
         packet={

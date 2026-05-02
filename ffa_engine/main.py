@@ -36,9 +36,15 @@ def _resolve_vessel_type(route: str) -> str:
     )
 
 
-def _select_market_keys(packet: dict, vessel_type: str) -> tuple[str, str]:
+def _select_market_keys(packet: dict, vessel_type: str, route: str | None = None) -> tuple[str, str]:
     """Pick spot and FFA keys from a stream packet using current schema conventions."""
-    spot_key = "C5" if vessel_type == "cape" else "p4tc"
+    route_key = route.strip().upper() if route else None
+
+    if route_key and route_key in packet:
+        spot_key = route_key
+    else:
+        spot_key = "C5" if vessel_type == "cape" else "p4tc"
+
     if spot_key not in packet:
         raise KeyError(f"Missing spot column '{spot_key}' in stream packet.")
 
@@ -124,7 +130,7 @@ def run_voyage_simulation(route="C8", duration=45, k_samples=60):
                 or ffa_key not in data_packet
                 or pd.isna(data_packet[ffa_key])
             ):
-                spot_key, ffa_key = _select_market_keys(data_packet, vessel_type)
+                spot_key, ffa_key = _select_market_keys(data_packet, vessel_type, route=route)
 
             # Initialize Voyage on the first packet
             if voyage is None:
