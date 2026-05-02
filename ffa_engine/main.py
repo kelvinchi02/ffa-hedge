@@ -6,6 +6,22 @@ from ffa_engine.optimization import FFAOptimizer
 from ffa_engine.database import FFADatabase
 
 
+_MONTH_TO_NUM = {
+    "Jan": 1,
+    "Feb": 2,
+    "Mar": 3,
+    "Apr": 4,
+    "May": 5,
+    "Jun": 6,
+    "Jul": 7,
+    "Aug": 8,
+    "Sep": 9,
+    "Oct": 10,
+    "Nov": 11,
+    "Dec": 12,
+}
+
+
 def _resolve_vessel_type(route: str) -> str:
     """Map route labels and vessel aliases to canonical vessel types."""
     normalized = route.strip().lower()
@@ -26,8 +42,38 @@ def _select_market_keys(packet: dict, vessel_type: str) -> tuple[str, str]:
     if spot_key not in packet:
         raise KeyError(f"Missing spot column '{spot_key}' in stream packet.")
 
-    # Keep compatibility with both old-style M1 and current pivoted M_* columns.
-    ffa_key = "M1" if "M1" in packet else next((key for key in packet if key.startswith("M_")), None)
+    # Keep compatibility with old-style M1 while preferring non-null monthly contracts.
+    ffa_key = None
+    if "M1" in packet and pd.notna(packet["M1"]):
+        ffa_key = "M1"
+    else:
+        current_date = pd.to_datetime(packet.get("Date"), errors="coerce")
+        monthly_candidates: list[tuple[str, pd.Timestamp | None]] = []
+
+        for key, value in packet.items():
+            if not key.startswith("M_") or pd.isna(value):
+                continue
+
+            maturity = None
+            parts = key.split("_")
+            if len(parts) == 3 and parts[1] in _MONTH_TO_NUM and parts[2].isdigit():
+                maturity = pd.Timestamp(year=int(parts[2]), month=_MONTH_TO_NUM[parts[1]], day=1)
+
+            monthly_candidates.append((key, maturity))
+
+        if monthly_candidates:
+            if pd.notna(current_date):
+                future = [item for item in monthly_candidates if item[1] is not None and item[1] >= current_date]
+                if future:
+                    ffa_key = min(future, key=lambda item: item[1])[0]
+
+            if ffa_key is None:
+                parsed = [item for item in monthly_candidates if item[1] is not None]
+                if parsed:
+                    ffa_key = min(parsed, key=lambda item: item[1])[0]
+                else:
+                    ffa_key = monthly_candidates[0][0]
+
     if ffa_key is None:
         raise KeyError("Missing FFA contract column in stream packet.")
 
@@ -72,7 +118,12 @@ def run_voyage_simulation(route="C8", duration=45, k_samples=60):
             sampler.update(data_packet)
             current_date = pd.to_datetime(data_packet["Date"])
 
-            if spot_key is None or ffa_key is None:
+            if (
+                spot_key is None
+                or ffa_key is None
+                or ffa_key not in data_packet
+                or pd.isna(data_packet[ffa_key])
+            ):
                 spot_key, ffa_key = _select_market_keys(data_packet, vessel_type)
 
             # Initialize Voyage on the first packet
