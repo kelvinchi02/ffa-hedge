@@ -4,14 +4,60 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULTS_DIR="${SCRIPT_DIR}/results"
 
-# Ensure local package imports resolve even when executing from results/.
-export PYTHONPATH="${SCRIPT_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
+to_windows_path() {
+    local path="$1"
+
+    if command -v cygpath >/dev/null 2>&1; then
+        cygpath -w "${path}"
+        return
+    fi
+
+    # Fallback for bash environments without cygpath (e.g., WSL-style /mnt paths).
+    if [[ "${path}" =~ ^/mnt/([a-zA-Z])/(.*)$ ]]; then
+        local drive="${BASH_REMATCH[1]}"
+        local rest="${BASH_REMATCH[2]}"
+        drive="${drive^^}"
+        rest="${rest//\//\\}"
+        printf '%s:\\%s' "${drive}" "${rest}"
+        return
+    fi
+
+    printf '%s' "${path}"
+}
 
 # Override with environment variables if desired.
-PYTHON_BIN="${PYTHON_BIN:-python3}"
-if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
-  PYTHON_BIN="python"
+if [[ -z "${PYTHON_BIN:-}" ]]; then
+    if [[ -f "${SCRIPT_DIR}/.venv/Scripts/python.exe" ]]; then
+        PYTHON_BIN="${SCRIPT_DIR}/.venv/Scripts/python.exe"
+    elif [[ -x "${SCRIPT_DIR}/.venv/bin/python" ]]; then
+        PYTHON_BIN="${SCRIPT_DIR}/.venv/bin/python"
+    elif [[ -f "${SCRIPT_DIR}/.uvtmp/Scripts/python.exe" ]]; then
+        PYTHON_BIN="${SCRIPT_DIR}/.uvtmp/Scripts/python.exe"
+    else
+        PYTHON_BIN="python3"
+        if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+            PYTHON_BIN="python"
+        fi
+    fi
 fi
+
+if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+    echo "ERROR: Could not resolve Python interpreter: ${PYTHON_BIN}" >&2
+    echo "Set PYTHON_BIN explicitly, or create a local virtualenv at .venv/.uvtmp." >&2
+    exit 1
+fi
+
+# Ensure local package imports resolve even when executing from results/.
+# If using a Windows .exe Python from Git Bash, use Windows-style paths and separators.
+SCRIPT_DIR_FOR_PYTHONPATH="${SCRIPT_DIR}"
+RESULTS_DIR_FOR_PYTHON="${RESULTS_DIR}"
+PYTHONPATH_SEP=":"
+if [[ "${PYTHON_BIN,,}" == *.exe ]]; then
+    SCRIPT_DIR_FOR_PYTHONPATH="$(to_windows_path "${SCRIPT_DIR}")"
+    RESULTS_DIR_FOR_PYTHON="$(to_windows_path "${RESULTS_DIR}")"
+    PYTHONPATH_SEP=";"
+fi
+export PYTHONPATH="${SCRIPT_DIR_FOR_PYTHONPATH}${PYTHONPATH:+${PYTHONPATH_SEP}${PYTHONPATH}}"
 
 DURATION_DAYS="${DURATION_DAYS:-45}"
 K_SAMPLES="${K_SAMPLES:-60}"
@@ -30,17 +76,15 @@ for route in "${ROUTES[@]}"; do
 done
 
 echo "Consolidating per-route SQLite files into a single summary..."
-export RESULTS_DIR_ABS="${RESULTS_DIR}"
-export ROUTES_CSV="$(IFS=,; echo "${ROUTES[*]}")"
-"${PYTHON_BIN}" - <<'PY'
-import os
+"${PYTHON_BIN}" - "${RESULTS_DIR_FOR_PYTHON}" "${ROUTES[@]}" <<'PY'
 import sqlite3
 from pathlib import Path
+import sys
 
 import pandas as pd
 
-results_dir = Path(os.environ["RESULTS_DIR_ABS"]).resolve()
-routes = [route for route in os.environ["ROUTES_CSV"].split(",") if route]
+results_dir = Path(sys.argv[1]).resolve()
+routes = [route for route in sys.argv[2:] if route]
 
 summary_db_path = results_dir / "summary.sqlite"
 summary_csv_path = results_dir / "summary.csv"

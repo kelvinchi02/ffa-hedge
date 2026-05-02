@@ -48,6 +48,24 @@ tests/
 
 ## 5. Installation and Execution
 
+Reproducible setup (recommended):
+
+```bash
+# Clone
+git clone https://github.com/your-username/ffa-hedge.git
+cd ffa-hedge
+
+# Install uv (https://docs.astral.sh/uv/getting-started/installation/)
+# Then create/update the locked project environment
+uv sync --frozen --extra dev
+```
+
+The command above uses `uv.lock` to install exact dependency versions. This is the most reproducible option across machines.
+
+Minimum Python version: 3.10+ (3.11 recommended for parity with current development setup).
+
+Fallback setup with pip:
+
 ```bash
 # Clone
 git clone https://github.com/your-username/ffa-hedge.git
@@ -63,7 +81,7 @@ pip install -e .
 Run the streaming + reservoir demo:
 
 ```bash
-python -m ffa_engine.streaming
+uv run python -m ffa_engine.streaming
 ```
 
 This demo executes the finite preview in `run_demo_stream()` and prints processed packet count plus sampled summary statistics.
@@ -73,6 +91,8 @@ Run all route simulations and consolidation in one step:
 ```bash
 bash run_all_sims.sh
 ```
+
+If you used `uv sync`, `run_all_sims.sh` automatically prefers local project interpreters at `.venv` (and then `.uvtmp`) before falling back to system `python3`/`python`.
 
 What it does:
 
@@ -89,6 +109,30 @@ Optional environment overrides:
 PYTHON_BIN=python3 DURATION_DAYS=45 K_SAMPLES=60 bash run_all_sims.sh
 ```
 
+Temporary environment with uv (throwaway alternative):
+
+```powershell
+# Install uv (one-time)
+winget install --id astral-sh.uv -e --source winget --accept-package-agreements --accept-source-agreements
+
+# If the current shell cannot find uv yet, restart the shell first.
+# Then create a throwaway environment using your preferred Python interpreter.
+uv venv --python C:/Users/kelvi/anaconda3/envs/pandtong/python.exe .uvtmp
+uv pip install --python .\.uvtmp\Scripts\python.exe -r requirements.txt
+
+# Run all sims from bash using the temporary interpreter
+bash -lc "PYTHON_BIN='/mnt/c/Users/kelvi/ffa-hedge/.uvtmp/Scripts/python.exe' ./run_all_sims.sh"
+
+# Remove the temporary environment when done
+Remove-Item -Recurse -Force .uvtmp
+```
+
+Notes:
+
+- `run_all_sims.sh` now auto-adjusts `PYTHONPATH` format when `PYTHON_BIN` points to a Windows `.exe` from Git Bash.
+- You can substitute any other interpreter path in the `uv venv --python ...` command.
+- To regenerate lockfile after dependency changes: `uv lock`.
+
 ## 6. Unit Tests
 
 The current test suite includes:
@@ -103,13 +147,13 @@ The current test suite includes:
 Run tests:
 
 ```bash
-pytest -q
+uv run pytest -q
 ```
 
 Run with coverage:
 
 ```bash
-pytest -q --cov=ffa_engine.streaming --cov=ffa_engine.database --cov=ffa_engine.strategies --cov=ffa_engine.optimization --cov=ffa_engine.main --cov-branch --cov-report=term-missing --cov-fail-under=100
+uv run pytest -q --cov=ffa_engine.streaming --cov=ffa_engine.database --cov=ffa_engine.strategies --cov=ffa_engine.optimization --cov=ffa_engine.main --cov-branch --cov-report=term-missing --cov-fail-under=100
 ```
 
 ## 7. CI/CD

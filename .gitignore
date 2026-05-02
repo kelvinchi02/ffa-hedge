@@ -214,3 +214,6 @@ __marimo__/
 
 # Database files
 *.db
+
+# Simulation outputs
+results/
