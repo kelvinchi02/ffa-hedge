@@ -180,6 +180,36 @@ def test_select_market_keys_prefers_earliest_non_expired_monthly_contract() -> N
     assert ffa_key == "M_Feb_2022"
 
 
+def test_select_market_keys_falls_back_to_parsed_monthlies_when_no_future_contracts() -> None:
+    spot_key, ffa_key = main_module._select_market_keys(
+        packet={
+            "Date": pd.Timestamp("2022-12-10"),
+            "p4tc": 220.0,
+            "M_Jan_2022": 215.0,
+            "M_Feb_2022": 220.0,
+        },
+        vessel_type="pmx",
+    )
+
+    assert spot_key == "p4tc"
+    assert ffa_key == "M_Jan_2022"
+
+
+def test_select_market_keys_handles_unparseable_monthly_keys_with_invalid_date() -> None:
+    spot_key, ffa_key = main_module._select_market_keys(
+        packet={
+            "Date": "not-a-date",
+            "p4tc": 220.0,
+            "M_Custom": 215.0,
+            "M_Another": 220.0,
+        },
+        vessel_type="pmx",
+    )
+
+    assert spot_key == "p4tc"
+    assert ffa_key == "M_Custom"
+
+
 def test_select_market_keys_raises_for_missing_spot_column() -> None:
     with pytest.raises(KeyError, match="Missing spot column"):
         main_module._select_market_keys(
