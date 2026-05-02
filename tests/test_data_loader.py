@@ -70,6 +70,19 @@ def test_resolve_falls_back_to_sample_name(
     assert Path(resolved).parent.name == "data_sample"
 
 
+def test_resolve_raises_when_both_full_and_sample_files_are_missing(
+    loader: FFADataLoader, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Technical rationale: missing source files should fail fast with a clear path message."""
+    missing_full_path = str(tmp_path / "__missing_full__")
+    missing_sample_path = str(tmp_path / "__missing_sample__")
+    monkeypatch.setattr(loader, "full_path", missing_full_path)
+    monkeypatch.setattr(loader, "sample_path", missing_sample_path)
+
+    with pytest.raises(FileNotFoundError, match="Missing data file"):
+        loader._resolve_data_file("cape_index_fixed.csv")
+
+
 def test_cached_property_returns_same_object(loader: FFADataLoader) -> None:
     """Technical rationale: caching avoids repeated disk I/O during iterative optimization runs."""
     first = loader.cape_ffa

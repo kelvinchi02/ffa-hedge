@@ -41,8 +41,10 @@ jobs:
             python -m pip install pandas pytest pytest-cov
           fi
 
+          python -m pip install -e .
+
       - name: Run tests
-        run: pytest -q --cov=ffa_engine.streaming --cov=ffa_engine.database --cov=ffa_engine.strategies --cov=ffa_engine.optimization --cov=ffa_engine.main --cov-branch --cov-report=term-missing --cov-fail-under=100
+        run: pytest -q --cov=ffa_engine --cov-branch --cov-report=term-missing --cov-fail-under=100
 
   release:
     name: Release Artifact
