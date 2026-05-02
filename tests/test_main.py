@@ -164,6 +164,52 @@ def test_select_market_keys_supports_legacy_m1_field() -> None:
     assert ffa_key == "M1"
 
 
+def test_select_market_keys_prefers_earliest_non_expired_monthly_contract() -> None:
+    spot_key, ffa_key = main_module._select_market_keys(
+        packet={
+            "Date": pd.Timestamp("2022-01-10"),
+            "p4tc": 220.0,
+            "M_Dec_2021": float("nan"),
+            "M_Jan_2022": 215.0,
+            "M_Feb_2022": 220.0,
+        },
+        vessel_type="pmx",
+    )
+
+    assert spot_key == "p4tc"
+    assert ffa_key == "M_Feb_2022"
+
+
+def test_select_market_keys_falls_back_to_parsed_monthlies_when_no_future_contracts() -> None:
+    spot_key, ffa_key = main_module._select_market_keys(
+        packet={
+            "Date": pd.Timestamp("2022-12-10"),
+            "p4tc": 220.0,
+            "M_Jan_2022": 215.0,
+            "M_Feb_2022": 220.0,
+        },
+        vessel_type="pmx",
+    )
+
+    assert spot_key == "p4tc"
+    assert ffa_key == "M_Jan_2022"
+
+
+def test_select_market_keys_handles_unparseable_monthly_keys_with_invalid_date() -> None:
+    spot_key, ffa_key = main_module._select_market_keys(
+        packet={
+            "Date": "not-a-date",
+            "p4tc": 220.0,
+            "M_Custom": 215.0,
+            "M_Another": 220.0,
+        },
+        vessel_type="pmx",
+    )
+
+    assert spot_key == "p4tc"
+    assert ffa_key == "M_Custom"
+
+
 def test_select_market_keys_raises_for_missing_spot_column() -> None:
     with pytest.raises(KeyError, match="Missing spot column"):
         main_module._select_market_keys(
@@ -214,3 +260,43 @@ def test_run_voyage_simulation_logs_rebalance_when_beta_drift_breaches_threshold
 
     assert "Initial" in models
     assert "Rebalance" in models
+
+
+def test_run_voyage_simulation_rolls_to_non_null_monthly_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _RollingPMXController:
+        instances = []
+
+        def __init__(self, loader: object) -> None:
+            self.loader = loader
+            self.vessel_calls: list[str] = []
+            _RollingPMXController.instances.append(self)
+
+        def stream_vessel_data(self, vessel_type: str = "pmx"):
+            self.vessel_calls.append(vessel_type)
+            yield {
+                "Date": pd.Timestamp("2022-01-03"),
+                "p4tc": 100.0,
+                "M_Jan_2022": 101.0,
+                "M_Feb_2022": 102.0,
+            }
+            yield {
+                "Date": pd.Timestamp("2022-02-03"),
+                "p4tc": 103.0,
+                "M_Jan_2022": float("nan"),
+                "M_Feb_2022": 104.0,
+            }
+
+    monkeypatch.setattr(main_module, "FFADataLoader", _FakeDataLoader)
+    monkeypatch.setattr(main_module, "StreamController", _RollingPMXController)
+    monkeypatch.setattr(main_module, "FFADatabase", _FakeDB)
+    monkeypatch.setattr(main_module, "FFAOptimizer", _FakeOptimizer)
+
+    main_module.run_voyage_simulation(route="P2A", duration=40, k_samples=5)
+
+    db = _FakeDB.instances[0]
+    assert len(db.market_rows) == 2
+    assert db.market_rows[0]["vessel"] == "pmx"
+    assert db.market_rows[0]["ffa"] == pytest.approx(102.0)
+    assert db.market_rows[1]["ffa"] == pytest.approx(104.0)
