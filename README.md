@@ -90,25 +90,7 @@ FFA files (`FFA_Cape_Fixed*.csv`, `FFA_Pan_Fixed*.csv`):
 - `Price` is the quoted FFA price for that row's `Route` and `Contract` on that date.
 - Conceptually, this is long format and is pivoted to wide format before optimization (`Date` x `Contract`).
 
-Minimal pandas examples:
 
-```python
-import pandas as pd
-
-# Index file: wide by default (Date + many route columns)
-idx = pd.read_csv("data_sample/cape_index_fixed_sample.csv", parse_dates=["Date"])
-idx = idx.sort_values("Date").set_index("Date")
-
-# FFA file: long format (one row per Date/Contract quote)
-ffa_long = pd.read_csv("data_sample/FFA_Cape_Fixed_sample.csv", parse_dates=["Date"])
-
-# Pivot to model-ready wide matrix: Date x Contract
-ffa_wide = (
-	ffa_long.pivot_table(index="Date", columns="Contract", values="Price", aggfunc="last")
-	.sort_index()
-	.sort_index(axis=1)
-)
-```
 
 ## 4. Repository Structure
 
