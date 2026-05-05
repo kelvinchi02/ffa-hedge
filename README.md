@@ -129,6 +129,8 @@ uv sync --frozen --extra dev
 
 The command above uses `uv.lock` to install exact dependency versions. This is the most reproducible option across machines.
 
+Dependencies are defined in `pyproject.toml` and pinned in `uv.lock`.
+
 Minimum Python version: 3.10+ (3.11 recommended for parity with current development setup).
 
 Fallback setup with pip:
@@ -138,11 +140,11 @@ Fallback setup with pip:
 git clone https://github.com/kelvinchi02/ffa-hedge.git
 cd ffa-hedge
 
-# Install dependencies
-pip install -r requirements.txt
+# Preferred pip install path (package + dev extras)
+pip install -e .[dev]
 
-# Optional editable install for package-style development
-pip install -e .
+# Optional compatibility path
+pip install -r requirements.txt
 ```
 
 Run the streaming + reservoir demo:
@@ -171,7 +173,7 @@ Run all route simulations and consolidation in one step:
 bash run_all_sims.sh
 ```
 
-If you used `uv sync`, `run_all_sims.sh` automatically prefers local project interpreters at `.venv` (and then `.uvtmp`) before falling back to system `python3`/`python`.
+`run_all_sims.sh` automatically prefers local project interpreters at `.venv` (and then `.uvtmp`) before falling back to system `python3`/`python`.
 
 What it does:
 
@@ -195,12 +197,11 @@ Temporary environment with uv (throwaway alternative):
 winget install --id astral-sh.uv -e --source winget --accept-package-agreements --accept-source-agreements
 
 # If the current shell cannot find uv yet, restart the shell first.
-# Then create a throwaway environment using your preferred Python interpreter.
-uv venv --python C:/Users/kelvi/anaconda3/envs/pandtong/python.exe .uvtmp
-uv pip install --python .\.uvtmp\Scripts\python.exe -r requirements.txt
+uv venv .uvtmp
+uv pip install --python .\.uvtmp\Scripts\python.exe -e .[dev]
 
-# Run all sims from bash using the temporary interpreter
-bash -lc "PYTHON_BIN='/mnt/c/Users/kelvi/ffa-hedge/.uvtmp/Scripts/python.exe' ./run_all_sims.sh"
+# Run all sims
+bash run_all_sims.sh
 
 # Remove the temporary environment when done
 Remove-Item -Recurse -Force .uvtmp
@@ -208,7 +209,6 @@ Remove-Item -Recurse -Force .uvtmp
 
 Notes:
 
-- `run_all_sims.sh` now auto-adjusts `PYTHONPATH` format when `PYTHON_BIN` points to a Windows `.exe` from Git Bash.
 - You can substitute any other interpreter path in the `uv venv --python ...` command.
 - To regenerate lockfile after dependency changes: `uv lock`.
 
