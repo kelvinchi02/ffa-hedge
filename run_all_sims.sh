@@ -61,7 +61,180 @@ export PYTHONPATH="${SCRIPT_DIR_FOR_PYTHONPATH}${PYTHONPATH:+${PYTHONPATH_SEP}${
 
 DURATION_DAYS="${DURATION_DAYS:-45}"
 K_SAMPLES="${K_SAMPLES:-60}"
-ROUTES=("C8" "C10" "C14" "P1A" "P3A")
+REPRESENTATIVE_ROUTES=("C8" "C10" "C14" "P1A" "P3A")
+DISCOVERED_ROUTES=()
+ROUTES=()
+
+print_usage() {
+    cat <<'USAGE'
+Usage: bash run_all_sims.sh [ROUTE ...] [--list-routes|--list-all-routes] [--list-default-routes] [--help]
+
+Run voyage simulations and consolidate outputs into results/summary.sqlite and results/summary.csv.
+
+Positional ROUTE arguments:
+    Optional route codes (e.g., C8 C14 P1A). If omitted, the representative default routes are run.
+
+Options:
+    --list-routes, --list-all-routes
+                                    Print all discovered routes from index data and exit.
+    --list-default-routes
+                                    Print the representative default routes and exit.
+  -h, --help      Show this help message and exit.
+
+Environment overrides:
+  PYTHON_BIN      Python interpreter to run (optional).
+  DURATION_DAYS   Voyage duration in days (default: 45).
+  K_SAMPLES       Reservoir sample size (default: 60).
+USAGE
+}
+
+sample_file_name() {
+    local file_name="$1"
+    local stem="${file_name%.*}"
+    local ext="${file_name##*.}"
+    printf '%s_sample.%s' "${stem}" "${ext}"
+}
+
+resolve_data_file() {
+    local file_name="$1"
+    local full_candidate="${SCRIPT_DIR}/data/${file_name}"
+
+    if [[ -f "${full_candidate}" ]]; then
+        printf '%s' "${full_candidate}"
+        return 0
+    fi
+
+    local sample_name
+    sample_name="$(sample_file_name "${file_name}")"
+    local sample_candidate="${SCRIPT_DIR}/data_sample/${sample_name}"
+
+    if [[ -f "${sample_candidate}" ]]; then
+        printf '%s' "${sample_candidate}"
+        return 0
+    fi
+
+    echo "ERROR: Missing data file '${file_name}' and sample fallback '${sample_name}'." >&2
+    exit 1
+}
+
+add_discovered_route() {
+    local candidate="$1"
+    local route
+    for route in "${DISCOVERED_ROUTES[@]:-}"; do
+        if [[ "${route}" == "${candidate}" ]]; then
+            return 0
+        fi
+    done
+    DISCOVERED_ROUTES+=("${candidate}")
+}
+
+discover_routes_from_index_file() {
+    local file_path="$1"
+    local header_line
+
+    header_line="$(head -n 1 "${file_path}" | tr -d '\r')"
+    if [[ -z "${header_line}" ]]; then
+        return 0
+    fi
+
+    local columns=()
+    IFS=',' read -r -a columns <<< "${header_line}"
+
+    local column
+    for column in "${columns[@]}"; do
+        if [[ -z "${column}" || "${column}" == "Date" ]]; then
+            continue
+        fi
+        add_discovered_route "${column}"
+    done
+}
+
+canonicalize_route() {
+    local candidate="$1"
+    local normalized_candidate="${candidate^^}"
+    local route
+
+    for route in "${DISCOVERED_ROUTES[@]:-}"; do
+        if [[ "${route^^}" == "${normalized_candidate}" ]]; then
+            printf '%s' "${route}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+list_routes() {
+    printf '%s\n' "${DISCOVERED_ROUTES[@]}"
+}
+
+list_default_routes() {
+    printf '%s\n' "${REPRESENTATIVE_ROUTES[@]}"
+}
+
+route_already_selected() {
+    local candidate="$1"
+    local route
+    for route in "${ROUTES[@]:-}"; do
+        if [[ "${route}" == "${candidate}" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+discover_routes_from_index_file "$(resolve_data_file "cape_index_fixed.csv")"
+discover_routes_from_index_file "$(resolve_data_file "pmx_index_fixed.csv")"
+
+if [[ "${#DISCOVERED_ROUTES[@]}" -eq 0 ]]; then
+    echo "ERROR: Could not discover any routes from index files." >&2
+    exit 1
+fi
+
+if [[ "$#" -eq 0 ]]; then
+    for route in "${REPRESENTATIVE_ROUTES[@]}"; do
+        if canonical_route="$(canonicalize_route "${route}")"; then
+            if ! route_already_selected "${canonical_route}"; then
+                ROUTES+=("${canonical_route}")
+            fi
+        fi
+    done
+else
+    for arg in "$@"; do
+        case "${arg}" in
+            --list-routes|--list-all-routes)
+                list_routes
+                exit 0
+                ;;
+            --list-default-routes)
+                list_default_routes
+                exit 0
+                ;;
+            -h|--help)
+                print_usage
+                exit 0
+                ;;
+            *)
+                if ! canonical_route="$(canonicalize_route "${arg}")"; then
+                    echo "ERROR: Unsupported route '${arg}'." >&2
+                    echo "Run 'bash run_all_sims.sh --list-all-routes' to see valid route codes." >&2
+                    exit 1
+                fi
+
+                if ! route_already_selected "${canonical_route}"; then
+                    ROUTES+=("${canonical_route}")
+                fi
+                ;;
+        esac
+    done
+fi
+
+if [[ "${#ROUTES[@]}" -eq 0 ]]; then
+    echo "ERROR: No routes selected." >&2
+    exit 1
+fi
+
+echo "Selected routes: ${ROUTES[*]}"
 
 echo "Cleaning results directory: ${RESULTS_DIR}"
 rm -rf "${RESULTS_DIR}"

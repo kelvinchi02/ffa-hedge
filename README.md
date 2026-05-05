@@ -10,7 +10,7 @@ The goal is to protect shipowners from freight-market volatility across the char
 
 ## 2. Key Technical Features
 
-- Data Streaming and Sampling (ORIE 5270): Implements Reservoir Sampling (Algorithm R) to maintain a memory-efficient and statistically representative sample of streaming market packets.
+- Data Streaming and Sampling: Implements Reservoir Sampling (Algorithm R) to maintain a memory-efficient and statistically representative sample of streaming market packets.
 - Liquidity-Aware Contract Selection: The data pipeline is built around liquid forward contracts and is designed to support maturity filtering (for example M1/M2/Q1) while avoiding near-expiry illiquid legs.
 - Triggered Rebalancing Support: Sampling and streaming modules are structured for threshold-based hedge updates instead of forced daily turnover, helping reduce slippage impact.
 - Dual-Book Persistence: SQLite persistence logs market data and optimization outputs side by side, enabling financial MTM and physical PnL reconciliation workflows.
@@ -115,7 +115,7 @@ tests/
 
 ## 5. Installation and Execution
 
-Reproducible setup (recommended):
+Quick start (uv, recommended):
 
 ```bash
 # Clone
@@ -123,94 +123,88 @@ git clone https://github.com/kelvinchi02/ffa-hedge.git
 cd ffa-hedge
 
 # Install uv (https://docs.astral.sh/uv/getting-started/installation/)
-# Then create/update the locked project environment
-uv sync --frozen --extra dev
+# Create/update the locked project environment
+uv sync --frozen
+
+# Run all route simulations + consolidation
+bash run_all_sims.sh
 ```
 
-The command above uses `uv.lock` to install exact dependency versions. This is the most reproducible option across machines.
+This uses `uv.lock` for reproducible dependency versions.
 
 Dependencies are defined in `pyproject.toml` and pinned in `uv.lock`.
 
-Minimum Python version: 3.10+ (3.11 recommended for parity with current development setup).
+Minimum Python version: 3.10+ (3.11 recommended).
 
-Fallback setup with pip:
-
-```bash
-# Clone
-git clone https://github.com/kelvinchi02/ffa-hedge.git
-cd ffa-hedge
-
-# Preferred pip install path (package + dev extras)
-pip install -e .[dev]
-
-# Optional compatibility path
-pip install -r requirements.txt
-```
-
-Run the streaming + reservoir demo:
+Other runnable commands:
 
 ```bash
+# Stream preview demo
 uv run python -m ffa_engine.streaming
+
+# Single-route simulation entrypoint
+uv run python -m ffa_engine.main
 ```
 
-This demo executes the finite preview in `run_demo_stream()` and prints processed packet count plus sampled summary statistics.
+`run_all_sims.sh` prefers `.venv` first because `uv sync` creates `.venv` as the standard project environment. `.uvtmp` is only an optional temporary environment.
 
-Import and execute package components directly:
+What `bash run_all_sims.sh` produces:
 
-```python
-from ffa_engine.data_loader import FFADataLoader
-from ffa_engine.streaming import StreamController
+- `results/summary.sqlite` (tables: `market_data_all_routes`, `hedging_results_all_routes`, `route_summary`)
+- `results/summary.csv` (route-level summary)
 
-loader = FFADataLoader()
-controller = StreamController(loader)
-first_packet = next(controller.stream_vessel_data(vessel_type="cape", infinite=False))
-print(first_packet["Date"], first_packet["C5"])
+Run specific routes only:
+
+```bash
+# One route
+bash run_all_sims.sh C8
+
+# Multiple routes
+bash run_all_sims.sh C8 C14 P1A
 ```
 
-Run all route simulations and consolidation in one step:
+No route arguments runs the representative default set:
 
 ```bash
 bash run_all_sims.sh
 ```
 
-`run_all_sims.sh` automatically prefers local project interpreters at `.venv` (and then `.uvtmp`) before falling back to system `python3`/`python`.
+Show routes and help:
 
-What it does:
+```bash
+# All available routes discovered from data columns
+bash run_all_sims.sh --list-routes
+bash run_all_sims.sh --list-all-routes
 
-- Creates a clean `results/` directory.
-- Runs voyage simulations for routes C8, C10, C14, P1A, and P3A.
-- Produces per-route SQLite files (for example `results_C8.db`, `results_C10.db`, `results_C14.db`, `results_P1A.db`, `results_P3A.db`) inside `results/`.
-- Consolidates outputs into:
-	- `results/summary.sqlite` (tables: `market_data_all_routes`, `hedging_results_all_routes`, `route_summary`)
-	- `results/summary.csv` (route-level summary)
+# Representative default routes used when no args are provided
+bash run_all_sims.sh --list-default-routes
 
-Optional environment overrides:
+bash run_all_sims.sh --help
+```
+
+Optional overrides:
 
 ```bash
 PYTHON_BIN=python3 DURATION_DAYS=45 K_SAMPLES=60 bash run_all_sims.sh
 ```
 
-Temporary environment with uv (throwaway alternative):
+Brief development note (optional):
 
-```powershell
-# Install uv (one-time)
-winget install --id astral-sh.uv -e --source winget --accept-package-agreements --accept-source-agreements
-
-# If the current shell cannot find uv yet, restart the shell first.
-uv venv .uvtmp
-uv pip install --python .\.uvtmp\Scripts\python.exe -e .[dev]
-
-# Run all sims
-bash run_all_sims.sh
-
-# Remove the temporary environment when done
-Remove-Item -Recurse -Force .uvtmp
+```bash
+# Include test tools when needed
+uv sync --frozen --extra dev
+uv run pytest -q
 ```
 
-Notes:
+Fallback install with pip (optional):
 
-- You can substitute any other interpreter path in the `uv venv --python ...` command.
-- To regenerate lockfile after dependency changes: `uv lock`.
+```bash
+# Package + dev extras
+pip install -e .[dev]
+
+# Compatibility path
+pip install -r requirements.txt
+```
 
 ## 6. Unit Tests
 
@@ -250,3 +244,7 @@ Trigger a release:
 git tag v1.0.0
 git push origin v1.0.0
 ```
+
+## 8. AI Disclosure
+
+This project was co-developed with VS Code Copilot for autocomplete assistance and debugging support.
